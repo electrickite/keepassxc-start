@@ -1,0 +1,10 @@
+#conf_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+#master_file="${conf_dir}/kpxcs.gpg"
+#parent_handle="0x81110001"
+#pcrs="sha256:0,7"
+#prefix_dir=/var/lib/keepassxc-start
+#quiet=0
+#seal_prefix=0
+#secret_attr="app KeePassXC action quickstart"
+#secret_label="KeePassXC Quickstart"
+#tmp_dir=/dev/shm

@@ -1,0 +1,304 @@
+#!/bin/bash
+set -e
+
+# keepassxc-start -- Unlock KeePassXC with local account credentials
+# Copyright (C) 2024 Corey Hinshaw <corey@electrickite.org>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+conf_file=/etc/default/keepassxc-start
+conf_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+prefix_dir=/var/lib/keepassxc-start
+tmp_dir=/dev/shm
+master_file="${conf_dir}/kpxcs.gpg"
+secret_attr="app KeePassXC action quickstart"
+secret_label="KeePassXC Quickstart"
+seal_prefix=0
+parent_handle="0x81110001"
+pcrs="sha256:0,7"
+quiet=0
+
+tmp=
+cmdargs=()
+
+log() {
+  if [[ $quiet -eq 0 ]]; then
+    echo "$1" >&2
+  fi
+}
+
+errx() {
+  echo "Error: ${1:-Unidentified error}" >&2
+  exit ${2:-1}
+}
+
+no_root() {
+  if [[ $EUID -eq 0 ]]; then
+    errx "Should not be run as root!"
+  fi
+}
+
+requires_arg() {
+  if [[ "$2" == "--" || -z "$2" ]]; then
+    errx "${1} requires an argument"
+  fi
+}
+
+requires_pkexec() {
+  if [[ $EUID -ne 0 || -z $PKEXEC_UID ]]; then
+    errx "Must be run using polkit"
+  fi
+}
+
+version() {
+  echo "keepassxc-start 1.0.0"
+}
+
+usage() {
+  cat <<EOF
+Usage: keepassxc-start [OPTION]... [COMMAND] [--] [ARG]...
+
+Any arguments after COMMAND or -- are passed to keepassxc.
+
+Commands:
+  init                  Create decryption key and encrypt master password
+
+Options:
+  -h, --help            Print this help text
+  -v, --version         Print version information
+  -q, --quiet           Silence informational output
+  -s, --seal            Seal decryption prefix with TPM
+  -H, --handle=HANDLE   TPM parent key handle
+                        Default: 0x81110001
+  -p, --pcr=PCR         List of PCR banks used to seal prefix
+                        Default: sha256:0,7
+EOF
+}
+
+prefix_path() {
+  echo "${prefix_dir}/${1:-user}.prefix"
+}
+
+get_prefix() {
+  pkexec $0 "${cmdargs[@]}" get-prefix
+}
+
+get_secret() {
+  secret-tool lookup $secret_attr
+}
+
+create_tmp() {
+  tmp=$(mktemp -d -p "$tmp_dir")
+  chmod 700 "$tmp"
+}
+
+remove_tmp() {
+  if [[ -n $tmp && -d $tmp ]]; then
+    rm -rf "$tmp"
+  fi
+}
+
+save_prefix() {
+  # $1 - prefix file path
+  # $2 - prefix
+  touch "$1"
+  chmod 600 "$1"
+  echo -n "$2" > "$1"
+}
+
+seal_prefix() {
+  # $1 - prefix file path
+  # $2 - prefix
+  create_tmp
+  local policy_digest="${tmp}/policy.digest"
+
+  save_prefix "${tmp}/prefix" "$2"
+  if ! tpm2_createpolicy --policy-pcr -l "$pcrs" -L "$policy_digest" >/dev/null; then
+    errx "Could not create TPM policy"
+  fi
+  rm -f "${1}.priv" "${1}.pub"
+
+  tpm2_create -C "$parent_handle" -a 'fixedtpm|fixedparent|adminwithpolicy|noda' -i "${tmp}/prefix" -L "$policy_digest" -r "${1}.priv" -u "${1}.pub" >/dev/null
+  local retval="$?"
+
+  rm -f "$policy_digest"
+  remove_tmp
+  return $retval
+}
+
+read_prefix() {
+  # $1 - prefix file path
+  cat "$1" 2> /dev/null
+}
+
+unseal_prefix() {
+  # $1 - prefix file path
+  create_tmp
+  local object_context="${tmp}/object.context"
+
+  tpm2_load -C "$parent_handle" -r "${1}.priv" -u "${1}.pub" -c "$object_context" >/dev/null
+  tpm2_unseal -c "$object_context" -p "pcr:$pcrs"
+  local retval="$?"
+
+  rm -f "$object_context"
+  remove_tmp
+  return $retval
+}
+
+command_get-prefix() {
+  requires_pkexec
+  local prefix_file="$(prefix_path $PKEXEC_UID)"
+  if [[ $seal_prefix -gt 0 ]]; then
+    unseal_prefix "$prefix_file"
+  else
+    read_prefix "$prefix_file"
+  fi
+  exit $?
+}
+
+command_set-prefix() {
+  requires_pkexec
+  local prefix_file="$(prefix_path $PKEXEC_UID)"
+  if [[ ! -d $prefix_dir ]]; then
+    mkdir -p "$prefix_dir"
+    chmod 700 "$prefix_dir"
+  fi
+  local prefix=$(pwgen -N 1 10)
+  if [[ $seal_prefix -gt 0 ]]; then
+    log "Sealing prefix with TPM..."
+    seal_prefix "$prefix_file" "$prefix"
+    local retval=$?
+  else
+    log "Saving prefix..."
+    save_prefix "$prefix_file" "$prefix"
+    local retval=$?
+  fi
+  if [[ $retval -eq 0 ]]; then
+    echo "$prefix"
+  fi
+  exit $retval
+}
+
+command_init() {
+  no_root
+  local prefix=$(pkexec $0 "${cmdargs[@]}" set-prefix)
+  log "Storing secret in login keychain..."
+  local secret=$(pwgen -N 1 10)
+  echo "$secret" | secret-tool store --label="$secret_label" $secret_attr
+  echo -n "KeePassXC master password: "
+  read kpass
+  log "Storing encrypted master password..."
+  echo "${prefix}${secret}" | gpg --batch --quiet --yes --passphrase-fd 0 -co "$master_file" <(echo -n "$kpass"); unset kpass
+  exit $?
+}
+
+launch() {
+  no_root
+  source <(grep LastActiveDatabase ~/.cache/keepassxc/keepassxc.ini | sed 's/ *= */=/g')
+  if [[ -z $LastActiveDatabase ]]; then
+    exec keepassxc
+  fi
+
+  local prefix=$(get_prefix)
+  local prefix_status=$?
+
+  local secret=$(get_secret)
+  local secret_status=$?
+
+  if [[ $prefix_status -ne 0 || $secret_status -ne 0 ]]; then
+    log "Could not look up secret. Launching normally..."
+    exec keepassxc
+  fi
+
+  echo "${prefix}${secret}" | gpg --batch --quiet --yes --passphrase-fd 0 -qd "$master_file" | sed 's/%/%25/g' | sed '$ ! s/$/%0A/g' | tr -d '\r\n' | exec keepassxc --pw-stdin "$LastActiveDatabase"
+}
+
+
+if [[ -f $conf_file ]]; then
+  source "$conf_file"
+fi
+
+args=()
+for i in "$@"; do
+  if [[ "$i" = "--" ]]; then
+    args+=("--")
+  fi
+  args+=("$i")
+done
+
+args=$(getopt -o hvqsH:p: --long help,version,quiet,seal,handle:,pcr: -n "$(basename $0)" -- "${args[@]}")
+eval set -- "$args"
+
+while true; do
+  case "$1" in
+    -h|--help)
+      version
+      echo "Unlock KeePassXC with local account credentials"
+      echo
+      usage
+      exit 0
+      ;;
+    -v|--version)
+      version
+      exit 0
+      ;;
+    -q|--quiet)
+      quiet=1
+      ;;
+    -s|--seal)
+      seal_prefix=1
+      cmdargs+=("$1")
+      ;;
+    -H|--handle)
+      requires_arg "$1" "$2"
+      parent_handle="$2"
+      cmdargs+=("$1" "$2")
+      shift
+      ;;
+    -p|--pcr)
+      requires_arg "$1" "$2"
+      pcrs="$2"
+      cmdargs+=("$1" "$2")
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+  shift
+done
+
+case "$1" in
+  --)
+    shift
+    ;;
+  init|get-prefix|set-prefix)
+    command_$1
+    ;;
+esac
+
+if [[ -z "$1" ]]; then
+  launch
+else
+  exec keepassxc "$@"
+fi

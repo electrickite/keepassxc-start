@@ -67,7 +67,7 @@ requires_pkexec() {
 }
 
 version() {
-  echo "keepassxc-start 1.0.0"
+  echo "keepassxc-start 1.0.1"
 }
 
 usage() {
@@ -226,7 +226,10 @@ launch() {
     exec keepassxc
   fi
 
-  echo "${prefix}${secret}" | gpg --batch --quiet --yes --passphrase-fd 0 -qd "$master_file" | sed 's/%/%25/g' | sed '$ ! s/$/%0A/g' | tr -d '\r\n' | exec keepassxc --pw-stdin "$LastActiveDatabase"
+  local password=$(echo "${prefix}${secret}" | gpg --batch --quiet --yes --passphrase-fd 0 -qd "$master_file" | sed 's/%/%25/g' | sed '$ ! s/$/%0A/g' | tr -d '\r\n')
+  echo "$password" | keepassxc --pw-stdin "$LastActiveDatabase" &
+  disown $!
+  exit
 }
 
 

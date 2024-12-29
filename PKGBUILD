@@ -1,7 +1,7 @@
 # Maintainer: Corey Hinshaw <corey(at)electrickite(dot)org>
 
 pkgname=keepassxc-start
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc="Unlock KeePassXC with local account credentials"
 arch=('any')

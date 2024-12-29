@@ -33,6 +33,7 @@ seal_prefix=0
 parent_handle="0x81110001"
 pcrs="sha256:0,7"
 quiet=0
+kill=0
 
 tmp=
 cmdargs=()
@@ -67,7 +68,7 @@ requires_pkexec() {
 }
 
 version() {
-  echo "keepassxc-start 1.0.1"
+  echo "keepassxc-start 1.1.0"
 }
 
 usage() {
@@ -83,6 +84,7 @@ Options:
   -h, --help            Print this help text
   -v, --version         Print version information
   -q, --quiet           Silence informational output
+  -k, --kill            Kill running instances of keepassxc before starting
   -s, --seal            Seal decryption prefix with TPM
   -H, --handle=HANDLE   TPM parent key handle
                         Default: 0x81110001
@@ -245,7 +247,7 @@ for i in "$@"; do
   args+=("$i")
 done
 
-args=$(getopt -o hvqsH:p: --long help,version,quiet,seal,handle:,pcr: -n "$(basename $0)" -- "${args[@]}")
+args=$(getopt -o hvqksH:p: --long help,version,quiet,kill,seal,handle:,pcr: -n "$(basename $0)" -- "${args[@]}")
 eval set -- "$args"
 
 while true; do
@@ -263,6 +265,9 @@ while true; do
       ;;
     -q|--quiet)
       quiet=1
+      ;;
+    -k|--kill)
+      kill=1
       ;;
     -s|--seal)
       seal_prefix=1
@@ -299,6 +304,12 @@ case "$1" in
     command_$1
     ;;
 esac
+
+if [[ $kill -eq 1 ]]; then
+  if killall --quiet keepassxc; then
+    sleep 2
+  fi
+fi
 
 if [[ -z "$1" ]]; then
   launch

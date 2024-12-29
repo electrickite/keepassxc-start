@@ -1,3 +1,4 @@
+keepassxc-start.policy
 *.tar.xz
 *.tar.gz
 *.tar.zst

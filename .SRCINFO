@@ -1,20 +1,21 @@
 pkgbase = keepassxc-start
 	pkgdesc = Unlock KeePassXC with local account credentials
-	pkgver = 1.0.1
+	pkgver = 1.1.0
 	pkgrel = 1
 	url = https://github.com/electrickite/keepassxc-start
 	arch = any
 	license = MIT
-	depends = keepassxc
-	depends = tpm2-tools>=5.0
-	depends = polkit
-	depends = libsecret
 	depends = bash
 	depends = coreutils
-	depends = util-linux
-	depends = grep
-	depends = sed
 	depends = gnupg
+	depends = grep
+	depends = keepassxc
+	depends = libsecret
+	depends = polkit
+	depends = psmisc
+	depends = sed
+	depends = tpm2-tools>=5.0
+	depends = util-linux
 	backup = etc/default/keepassxc-start
 	source = keepassxc-start
 	source = Makefile

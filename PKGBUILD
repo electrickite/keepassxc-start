@@ -1,23 +1,24 @@
 # Maintainer: Corey Hinshaw <corey(at)electrickite(dot)org>
 
 pkgname=keepassxc-start
-pkgver=1.0.1
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Unlock KeePassXC with local account credentials"
 arch=('any')
 url="https://github.com/electrickite/${pkgname}"
 license=('MIT')
 backup=("etc/default/${pkgname}")
-depends=('keepassxc'
-         'tpm2-tools>=5.0'
-         'polkit'
-         'libsecret'
-         'bash'
+depends=('bash'
          'coreutils'
-         'util-linux'
+         'gnupg'
          'grep'
+         'keepassxc'
+         'libsecret'
+         'polkit'
+         'psmisc'
          'sed'
-         'gnupg')
+         'tpm2-tools>=5.0'
+         'util-linux')
 
 source=("$pkgname"
         "Makefile"

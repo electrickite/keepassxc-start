@@ -1,4 +1,5 @@
 #conf_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+#kill=0
 #master_file="${conf_dir}/kpxcs.gpg"
 #parent_handle="0x81110001"
 #pcrs="sha256:0,7"

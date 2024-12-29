@@ -42,6 +42,7 @@ An Arch Linux PKGBUILD is included that will build a packge for Arch systems:
       -h, --help            Print this help text
       -v, --version         Print version information
       -q, --quiet           Silence informational output
+      -k, --kill            Kill running instances of keepassxc before starting
       -s, --seal            Seal decryption prefix with TPM
       -H, --handle=HANDLE   TPM parent key handle
                             Default: 0x81110001

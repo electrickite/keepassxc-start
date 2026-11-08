@@ -24,6 +24,7 @@ set -e
 
 conf_file=/etc/default/keepassxc-start
 conf_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+ini_file="${XDG_STATE_HOME:-$HOME/.local/state}/keepassxc/keepassxc.ini"
 prefix_dir=/var/lib/keepassxc-start
 tmp_dir=/dev/shm
 master_file="${conf_dir}/kpxcs.gpg"
@@ -68,7 +69,7 @@ requires_pkexec() {
 }
 
 version() {
-  echo "keepassxc-start 1.1.0"
+  echo "keepassxc-start 1.1.1"
 }
 
 usage() {
@@ -212,7 +213,7 @@ command_init() {
 
 launch() {
   no_root
-  source <(grep LastActiveDatabase ~/.cache/keepassxc/keepassxc.ini | sed 's/ *= */=/g')
+  source <(grep LastActiveDatabase "$ini_file" | sed 's/ *= */=/g')
   if [[ -z $LastActiveDatabase ]]; then
     exec keepassxc
   fi
